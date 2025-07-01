@@ -9,6 +9,8 @@ from PyQt5.QtCore import Qt
 
 from src.gui.site_management import SiteManagementTab
 from src.gui.library_tab import LibraryTab
+from src.gui.local_library_tab import LocalLibraryTab
+from src.gui.comparison_tab import ComparisonTab
 
 
 logger = logging.getLogger(__name__)
@@ -48,8 +50,14 @@ class MainWindow(QMainWindow):
         self.site_management_tab = SiteManagementTab()
         self.tab_widget.addTab(self.site_management_tab, "Site Management")
         
+        self.local_library_tab = LocalLibraryTab()
+        self.tab_widget.addTab(self.local_library_tab, "Local Library")
+
         self.library_tab = LibraryTab()
-        self.tab_widget.addTab(self.library_tab, "Library")
+        self.tab_widget.addTab(self.library_tab, "Remote Library")
+
+        self.comparison_tab = ComparisonTab()
+        self.tab_widget.addTab(self.comparison_tab, "File Comparison")
         
         # Create the status bar
         self.status_bar = QStatusBar()

@@ -1,13 +1,13 @@
-"""File validator implementation for the PDF Downloader application.
+"""File validator for the PDF Downloader application.
 
-This module provides functionality for validating downloaded files.
+This module provides functionality for validating different types of files.
 """
 
 import os
 import logging
 from typing import Dict, Any, Optional
 
-# Import file-specific libraries
+# Import file-specific validation libraries
 try:
     import PyPDF2
     HAS_PYPDF2 = True
@@ -32,7 +32,7 @@ logger = logging.getLogger(__name__)
 
 
 class FileValidator:
-    """Validator for checking downloaded files.
+    """Validator for checking file integrity and type.
     
     This class provides methods for validating different types of files,
     such as PDFs, EPUBs, and text files.
@@ -43,11 +43,11 @@ class FileValidator:
         pass
     
     def validate_file(self, file_path: str, file_type: Optional[str] = None) -> Dict[str, Any]:
-        """Validate a file.
+        """Validate a file based on its type.
         
         Args:
             file_path: Path to the file to validate
-            file_type: Type of the file (optional, will be inferred from the file extension if not provided)
+            file_type: Type of the file (optional, will be inferred from extension if not provided)
             
         Returns:
             Dictionary containing validation results
@@ -60,171 +60,185 @@ class FileValidator:
             "metadata": {}
         }
         
-        # Check if the file exists
-        if not os.path.exists(file_path):
-            result["error"] = f"File {file_path} does not exist"
-            return result
-        
-        # Determine the file type if not provided
-        if file_type is None:
-            file_type = os.path.splitext(file_path)[1].lower().lstrip('.')
-            result["file_type"] = file_type
-        
-        # Validate the file based on its type
         try:
+            # Check if the file exists
+            if not os.path.isfile(file_path):
+                result["error"] = "File does not exist"
+                return result
+            
+            # Infer the file type from the extension if not provided
+            if file_type is None:
+                _, ext = os.path.splitext(file_path)
+                ext = ext.lower()
+                
+                if ext == ".pdf":
+                    file_type = "pdf"
+                elif ext == ".epub":
+                    file_type = "epub"
+                elif ext in [".txt", ".text"]:
+                    file_type = "txt"
+                else:
+                    result["error"] = f"Unsupported file extension: {ext}"
+                    return result
+            
+            result["file_type"] = file_type
+            
+            # Validate the file based on its type
             if file_type == "pdf":
-                self._validate_pdf(file_path, result)
+                return self._validate_pdf(file_path)
             elif file_type == "epub":
-                self._validate_epub(file_path, result)
-            elif file_type in ["txt", "text"]:
-                self._validate_text(file_path, result)
+                return self._validate_epub(file_path)
+            elif file_type == "txt":
+                return self._validate_text(file_path)
             else:
-                # For unknown file types, just check if the file is not empty
-                self._validate_generic(file_path, result)
+                result["error"] = f"Unsupported file type: {file_type}"
+                return result
         except Exception as e:
             logger.error(f"Error validating file {file_path}: {e}")
             result["error"] = str(e)
-        
-        return result
+            return result
     
-    def _validate_pdf(self, file_path: str, result: Dict[str, Any]) -> None:
+    def _validate_pdf(self, file_path: str) -> Dict[str, Any]:
         """Validate a PDF file.
         
         Args:
             file_path: Path to the PDF file
-            result: Dictionary to store validation results
+            
+        Returns:
+            Dictionary containing validation results
         """
-        if not HAS_PYPDF2:
-            result["error"] = "PyPDF2 library not available for PDF validation"
-            return
+        result = {
+            "valid": False,
+            "file_path": file_path,
+            "file_type": "pdf",
+            "error": None,
+            "metadata": {}
+        }
         
         try:
+            # Check if PyPDF2 is available
+            if not HAS_PYPDF2:
+                result["error"] = "PyPDF2 library not available"
+                return result
+            
             # Open the PDF file
             with open(file_path, "rb") as f:
-                # Create a PDF reader object
+                # Try to read the PDF file
                 pdf = PyPDF2.PdfReader(f)
                 
-                # Check if the PDF has pages
-                if len(pdf.pages) == 0:
-                    result["error"] = "PDF file has no pages"
-                    return
+                # Get the number of pages
+                num_pages = len(pdf.pages)
                 
-                # Get metadata
+                # Get the document info
+                info = pdf.metadata
+                
+                # Add metadata to the result
                 result["metadata"] = {
-                    "pages": len(pdf.pages),
-                    "title": pdf.metadata.get("/Title", ""),
-                    "author": pdf.metadata.get("/Author", ""),
-                    "subject": pdf.metadata.get("/Subject", ""),
-                    "creator": pdf.metadata.get("/Creator", "")
+                    "num_pages": num_pages,
+                    "title": info.title if info and hasattr(info, "title") else None,
+                    "author": info.author if info and hasattr(info, "author") else None,
+                    "subject": info.subject if info and hasattr(info, "subject") else None,
+                    "creator": info.creator if info and hasattr(info, "creator") else None,
+                    "producer": info.producer if info and hasattr(info, "producer") else None
                 }
                 
-                # Mark as valid
+                # Mark the file as valid
                 result["valid"] = True
         except Exception as e:
-            result["error"] = f"Error validating PDF: {str(e)}"
+            logger.error(f"Error validating PDF file {file_path}: {e}")
+            result["error"] = str(e)
+        
+        return result
     
-    def _validate_epub(self, file_path: str, result: Dict[str, Any]) -> None:
+    def _validate_epub(self, file_path: str) -> Dict[str, Any]:
         """Validate an EPUB file.
         
         Args:
             file_path: Path to the EPUB file
-            result: Dictionary to store validation results
+            
+        Returns:
+            Dictionary containing validation results
         """
-        if not HAS_EBOOKLIB:
-            result["error"] = "ebooklib library not available for EPUB validation"
-            return
+        result = {
+            "valid": False,
+            "file_path": file_path,
+            "file_type": "epub",
+            "error": None,
+            "metadata": {}
+        }
         
         try:
+            # Check if ebooklib is available
+            if not HAS_EBOOKLIB:
+                result["error"] = "ebooklib library not available"
+                return result
+            
             # Open the EPUB file
             book = epub.read_epub(file_path)
             
-            # Check if the EPUB has items
-            if len(book.items) == 0:
-                result["error"] = "EPUB file has no items"
-                return
+            # Get the metadata
+            title = book.get_metadata("DC", "title")
+            creator = book.get_metadata("DC", "creator")
+            language = book.get_metadata("DC", "language")
             
-            # Get metadata
+            # Add metadata to the result
             result["metadata"] = {
-                "title": book.title,
-                "language": book.language,
-                "author": ", ".join(book.get_metadata("DC", "creator")),
-                "items": len(book.items)
+                "title": title[0][0] if title and len(title) > 0 else None,
+                "author": creator[0][0] if creator and len(creator) > 0 else None,
+                "language": language[0][0] if language and len(language) > 0 else None
             }
             
-            # Mark as valid
+            # Mark the file as valid
             result["valid"] = True
         except Exception as e:
-            result["error"] = f"Error validating EPUB: {str(e)}"
+            logger.error(f"Error validating EPUB file {file_path}: {e}")
+            result["error"] = str(e)
+        
+        return result
     
-    def _validate_text(self, file_path: str, result: Dict[str, Any]) -> None:
+    def _validate_text(self, file_path: str) -> Dict[str, Any]:
         """Validate a text file.
         
         Args:
             file_path: Path to the text file
-            result: Dictionary to store validation results
+            
+        Returns:
+            Dictionary containing validation results
         """
-        try:
-            # Get the file size
-            file_size = os.path.getsize(file_path)
-            
-            # Check if the file is empty
-            if file_size == 0:
-                result["error"] = "Text file is empty"
-                return
-            
-            # Try to detect the encoding
-            encoding = "utf-8"
-            if HAS_CHARDET:
-                with open(file_path, "rb") as f:
-                    raw_data = f.read(min(file_size, 1024 * 1024))  # Read up to 1 MB
-                    encoding_result = chardet.detect(raw_data)
-                    encoding = encoding_result["encoding"]
-            
-            # Try to read the file with the detected encoding
-            with open(file_path, "r", encoding=encoding) as f:
-                # Read the first few lines
-                lines = []
-                for i, line in enumerate(f):
-                    if i >= 10:
-                        break
-                    lines.append(line.strip())
-            
-            # Get metadata
-            result["metadata"] = {
-                "size": file_size,
-                "encoding": encoding,
-                "lines": len(lines),
-                "preview": "\n".join(lines[:3])
-            }
-            
-            # Mark as valid
-            result["valid"] = True
-        except Exception as e:
-            result["error"] = f"Error validating text file: {str(e)}"
-    
-    def _validate_generic(self, file_path: str, result: Dict[str, Any]) -> None:
-        """Validate a generic file.
+        result = {
+            "valid": False,
+            "file_path": file_path,
+            "file_type": "txt",
+            "error": None,
+            "metadata": {}
+        }
         
-        Args:
-            file_path: Path to the file
-            result: Dictionary to store validation results
-        """
         try:
-            # Get the file size
-            file_size = os.path.getsize(file_path)
-            
-            # Check if the file is empty
-            if file_size == 0:
-                result["error"] = "File is empty"
-                return
-            
-            # Get metadata
-            result["metadata"] = {
-                "size": file_size,
-                "extension": os.path.splitext(file_path)[1].lower().lstrip('.')
-            }
-            
-            # Mark as valid
-            result["valid"] = True
+            # Try to open the file to check if it's readable
+            with open(file_path, "rb") as f:
+                # Read a sample of the file
+                sample = f.read(1024)  # Read the first 1KB
+                
+                # Try to detect the encoding
+                if HAS_CHARDET:
+                    encoding_result = chardet.detect(sample)
+                    encoding = encoding_result["encoding"]
+                    confidence = encoding_result["confidence"]
+                else:
+                    encoding = "utf-8"  # Default to UTF-8
+                    confidence = 0.0
+                
+                # Add metadata to the result
+                result["metadata"] = {
+                    "encoding": encoding,
+                    "confidence": confidence,
+                    "size": os.path.getsize(file_path)
+                }
+                
+                # Mark the file as valid
+                result["valid"] = True
         except Exception as e:
-            result["error"] = f"Error validating file: {str(e)}"
+            logger.error(f"Error validating text file {file_path}: {e}")
+            result["error"] = str(e)
+        
+        return result

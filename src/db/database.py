@@ -4,8 +4,13 @@ This module provides database connection management and basic query functionalit
 """
 
 import sqlite3
+import os
 from pathlib import Path
 from typing import Optional
+import logging
+
+
+logger = logging.getLogger(__name__)
 
 
 class DatabaseManager:
@@ -58,7 +63,50 @@ class DatabaseManager:
                 schema_sql = f.read()
                 cursor.executescript(schema_sql)
         else:
-            # TODO: Create schema if file doesn't exist
-            pass
+            logger.error(f"Schema file not found: {schema_path}")
+            raise FileNotFoundError(f"Schema file not found: {schema_path}")
         
         conn.commit()
+        logger.info("Database schema initialized")
+    
+    def initialize_database(self) -> None:
+        """Initialize the database for the application.
+        
+        This method creates the database tables if they don't exist.
+        """
+        try:
+            self.initialize_schema()
+        except Exception as e:
+            logger.error(f"Error initializing database: {e}")
+            raise
+    
+    def execute_query(self, query: str, parameters: tuple = ()) -> sqlite3.Cursor:
+        """Execute a SQL query with parameters.
+        
+        Args:
+            query: SQL query to execute
+            parameters: Query parameters (optional)
+            
+        Returns:
+            SQLite cursor with the query results
+        """
+        conn = self.connect()
+        cursor = conn.cursor()
+        cursor.execute(query, parameters)
+        return cursor
+    
+    def execute_script(self, script: str) -> None:
+        """Execute a SQL script.
+        
+        Args:
+            script: SQL script to execute
+        """
+        conn = self.connect()
+        cursor = conn.cursor()
+        cursor.executescript(script)
+        conn.commit()
+    
+    def commit(self) -> None:
+        """Commit the current transaction."""
+        if self.connection is not None:
+            self.connection.commit()

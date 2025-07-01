@@ -40,6 +40,12 @@ class Config:
             "level": "INFO",
             "max_files": 10,
             "max_size_mb": 10
+        },
+        "local_library": {
+            "directories": [],
+            "scan_on_startup": False,
+            "file_types": ["pdf", "epub", "txt"],
+            "validate_files": True
         }
     }
     
@@ -148,6 +154,64 @@ class Config:
         except Exception as e:
             logger.error(f"Error setting configuration value: {e}")
             return False
+    
+    def add_local_directory(self, directory: str) -> bool:
+        """Add a local directory to the configuration.
+        
+        Args:
+            directory: Path to the directory to add
+            
+        Returns:
+            True if the directory was added successfully, False otherwise
+        """
+        try:
+            # Get the current directories
+            directories = self.get("local_library", "directories", [])
+            
+            # Add the directory if it's not already in the list
+            if directory not in directories:
+                directories.append(directory)
+                
+                # Update the configuration
+                return self.set("local_library", "directories", directories)
+            
+            return True  # Directory already exists
+        except Exception as e:
+            logger.error(f"Error adding local directory: {e}")
+            return False
+    
+    def remove_local_directory(self, directory: str) -> bool:
+        """Remove a local directory from the configuration.
+        
+        Args:
+            directory: Path to the directory to remove
+            
+        Returns:
+            True if the directory was removed successfully, False otherwise
+        """
+        try:
+            # Get the current directories
+            directories = self.get("local_library", "directories", [])
+            
+            # Remove the directory if it's in the list
+            if directory in directories:
+                directories.remove(directory)
+                
+                # Update the configuration
+                return self.set("local_library", "directories", directories)
+            
+            return True  # Directory already removed
+        except Exception as e:
+            logger.error(f"Error removing local directory: {e}")
+            return False
+    
+    def get_local_directories(self) -> list:
+        """Get the list of local directories.
+        
+        Returns:
+            List of local directory paths
+        """
+        return self.get("local_library", "directories", [])
     
     def _update_dict(self, target: Dict[str, Any], source: Dict[str, Any]) -> None:
         """Recursively update a dictionary.
