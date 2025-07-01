@@ -5,6 +5,7 @@ This module contains all the UI components for the application, including:
 - Site management interface
 - Local and remote library views
 - Download queue management
+- Download history tracking
 - Settings and configuration panels
 - Log and notification displays
 """

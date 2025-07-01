@@ -51,10 +51,10 @@ class DownloadQueueTab(QWidget):
         controls_layout.addWidget(self.start_stop_button)
         controls_layout.addWidget(self.clear_button)
         controls_layout.addStretch()
-        
-        # Status label
-        self.status_label = QLabel("Ready")
-        
+
+        # Add controls layout to main layout
+        main_layout.addLayout(controls_layout)
+
         # Queue table
         self.queue_table = QTableWidget()
         self.queue_table.setColumnCount(5)
@@ -62,239 +62,210 @@ class DownloadQueueTab(QWidget):
         self.queue_table.horizontalHeader().setSectionResizeMode(1, QHeaderView.Stretch)
         self.queue_table.setSelectionBehavior(QTableWidget.SelectRows)
         self.queue_table.setSelectionMode(QTableWidget.SingleSelection)
+        self.queue_table.setEditTriggers(QTableWidget.NoEditTriggers)
         self.queue_table.setContextMenuPolicy(Qt.CustomContextMenu)
         self.queue_table.customContextMenuRequested.connect(self.show_context_menu)
-        
-        # Add to main layout
-        main_layout.addLayout(controls_layout)
-        main_layout.addWidget(self.status_label)
+
+        # Add queue table to main layout
         main_layout.addWidget(self.queue_table)
-        
-        # Initialize the download manager
-        self.download_manager.start()
-        
-        # Connect signals
+
+        # Connect signals from download manager
         self.download_manager.download_started.connect(self.on_download_started)
         self.download_manager.download_progress.connect(self.on_download_progress)
         self.download_manager.download_completed.connect(self.on_download_completed)
         self.download_manager.download_failed.connect(self.on_download_failed)
-        
-        # Load the queue
-        self.load_queue()
-        
-    def load_queue(self):
-        """Load the download queue into the table."""
-        # Clear the table
-        self.queue_table.setRowCount(0)
-        
-        # Get the queue items
-        queue_items = self.download_manager.get_queue_items()
-        
-        # Add items to the table
-        for i, item in enumerate(queue_items):
-            self.queue_table.insertRow(i)
-            
-            # ID
-            id_item = QTableWidgetItem(str(item["id"]))
-            id_item.setData(Qt.UserRole, item["id"])
-            self.queue_table.setItem(i, 0, id_item)
-            
-            # Name
-            name_item = QTableWidgetItem(item["name"])
-            self.queue_table.setItem(i, 1, name_item)
-            
-            # Size
-            size_item = QTableWidgetItem(self.format_size(item["size"]))
-            self.queue_table.setItem(i, 2, size_item)
-            
-            # Status
-            status_item = QTableWidgetItem(item["status"])
-            self.queue_table.setItem(i, 3, status_item)
-            
-            # Progress
-            progress_bar = QProgressBar()
-            progress_bar.setRange(0, 100)
-            progress_bar.setValue(item["progress"])
-            self.queue_table.setCellWidget(i, 4, progress_bar)
-        
-        # Update the status label
-        self.update_status_label()
-        
-    def update_status_label(self):
-        """Update the status label with queue information."""
-        queue_items = self.download_manager.get_queue_items()
-        active = sum(1 for item in queue_items if item["status"] == "Downloading")
-        queued = sum(1 for item in queue_items if item["status"] == "Queued")
-        completed = sum(1 for item in queue_items if item["status"] == "Completed")
-        failed = sum(1 for item in queue_items if item["status"] == "Failed")
-        
-        self.status_label.setText(
-            f"Queue: {len(queue_items)} items | "
-            f"Active: {active} | "
-            f"Queued: {queued} | "
-            f"Completed: {completed} | "
-            f"Failed: {failed}"
-        )
-        
+
+        # Start the download manager
+        self.download_manager.start()
+
+        # Update the queue table
+        self.update_queue_table()
+
     def toggle_downloads(self):
-        """Start or stop the download process."""
+        """Toggle the download manager between running and paused states."""
         if self.download_manager.is_running():
             self.download_manager.stop()
             self.start_stop_button.setText("Start Downloads")
         else:
             self.download_manager.start()
-            self.start_stop_button.setText("Stop Downloads")
-        
+            self.start_stop_button.setText("Pause Downloads")
+
     def clear_queue(self):
         """Clear the download queue."""
         # Ask for confirmation
         reply = QMessageBox.question(
-            self,
-            "Clear Queue",
+            self, "Clear Queue",
             "Are you sure you want to clear the download queue?",
-            QMessageBox.Yes | QMessageBox.No,
-            QMessageBox.No
+            QMessageBox.Yes | QMessageBox.No, QMessageBox.No
         )
-        
+
         if reply == QMessageBox.Yes:
             self.download_manager.clear_queue()
-            self.load_queue()
-        
-    def show_context_menu(self, position: QPoint):
-        """Show the context menu for the queue table.
-        
+            self.update_queue_table()
+
+    def update_queue_table(self):
+        """Update the queue table with the current download queue."""
+        # Get the queue items
+        queue_items = self.download_manager.get_queue_items()
+        active_downloads = self.download_manager.get_active_downloads()
+
+        # Clear the table
+        self.queue_table.setRowCount(0)
+
+        # Add active downloads first
+        for file_id, download in active_downloads.items():
+            row = self.queue_table.rowCount()
+            self.queue_table.insertRow(row)
+
+            # ID
+            id_item = QTableWidgetItem(str(file_id))
+            id_item.setData(Qt.UserRole, file_id)
+            self.queue_table.setItem(row, 0, id_item)
+
+            # Name
+            name_item = QTableWidgetItem(download.get("name", ""))
+            self.queue_table.setItem(row, 1, name_item)
+
+            # Size
+            size = download.get("size", 0)
+            size_item = QTableWidgetItem(self._format_size(size) if size else "")
+            self.queue_table.setItem(row, 2, size_item)
+
+            # Status
+            status = download.get("status", "")
+            status_item = QTableWidgetItem(status.capitalize())
+            if status == "completed":
+                status_item.setForeground(QColor(0, 128, 0))  # Green
+            elif status == "failed":
+                status_item.setForeground(QColor(255, 0, 0))  # Red
+            self.queue_table.setItem(row, 3, status_item)
+
+            # Progress
+            progress = download.get("progress", 0.0)
+            progress_bar = QProgressBar()
+            progress_bar.setRange(0, 100)
+            progress_bar.setValue(int(progress * 100))
+            self.queue_table.setCellWidget(row, 4, progress_bar)
+
+        # Add queued items
+        for item in queue_items:
+            row = self.queue_table.rowCount()
+            self.queue_table.insertRow(row)
+
+            # ID
+            file_id = item.get("file_id", 0)
+            id_item = QTableWidgetItem(str(file_id))
+            id_item.setData(Qt.UserRole, file_id)
+            self.queue_table.setItem(row, 0, id_item)
+
+            # Name
+            name_item = QTableWidgetItem(item.get("name", ""))
+            self.queue_table.setItem(row, 1, name_item)
+
+            # Size
+            size = item.get("size", 0)
+            size_item = QTableWidgetItem(self._format_size(size) if size else "")
+            self.queue_table.setItem(row, 2, size_item)
+
+            # Status
+            status_item = QTableWidgetItem("Queued")
+            self.queue_table.setItem(row, 3, status_item)
+
+            # Progress
+            progress_bar = QProgressBar()
+            progress_bar.setRange(0, 100)
+            progress_bar.setValue(0)
+            self.queue_table.setCellWidget(row, 4, progress_bar)
+
+    def _format_size(self, size_bytes):
+        """Format a size in bytes to a human-readable string.
+
+        Args:
+            size_bytes: Size in bytes
+
+        Returns:
+            Human-readable size string
+        """
+        if size_bytes < 1024:
+            return f"{size_bytes} B"
+        elif size_bytes < 1024 * 1024:
+            return f"{size_bytes / 1024:.1f} KB"
+        elif size_bytes < 1024 * 1024 * 1024:
+            return f"{size_bytes / (1024 * 1024):.1f} MB"
+        else:
+            return f"{size_bytes / (1024 * 1024 * 1024):.1f} GB"
+
+    def show_context_menu(self, position):
+        """Show context menu for the queue table.
+
         Args:
             position: Position where the context menu should be shown
         """
         # Get the selected row
-        row = self.queue_table.indexAt(position).row()
+        row = self.queue_table.rowAt(position.y())
         if row < 0:
             return
-        
+
         # Get the file ID
         file_id = self.queue_table.item(row, 0).data(Qt.UserRole)
-        
-        # Create the context menu
-        menu = QMenu(self)
-        
+
+        # Create menu
+        menu = QMenu()
+
         # Add actions
         remove_action = QAction("Remove from Queue", self)
-        remove_action.triggered.connect(lambda: self.remove_from_queue(file_id))
         menu.addAction(remove_action)
-        
-        prioritize_action = QAction("Move to Top", self)
-        prioritize_action.triggered.connect(lambda: self.prioritize_file(file_id))
-        menu.addAction(prioritize_action)
-        
-        # Show the menu
-        menu.exec_(self.queue_table.mapToGlobal(position))
-        
-    def remove_from_queue(self, file_id: int):
-        """Remove a file from the download queue.
-        
-        Args:
-            file_id: ID of the file to remove
-        """
-        self.download_manager.remove_from_queue(file_id)
-        self.load_queue()
-        
-    def prioritize_file(self, file_id: int):
-        """Move a file to the top of the download queue.
-        
-        Args:
-            file_id: ID of the file to prioritize
-        """
-        self.download_manager.prioritize_file(file_id)
-        self.load_queue()
-        
-    def on_download_started(self, file_id: int):
-        """Handle the download started signal.
-        
-        Args:
-            file_id: ID of the file that started downloading
-        """
-        # Find the row for this file
-        for row in range(self.queue_table.rowCount()):
-            if self.queue_table.item(row, 0).data(Qt.UserRole) == file_id:
-                # Update the status
-                self.queue_table.item(row, 3).setText("Downloading")
-                break
-        
-        # Update the status label
-        self.update_status_label()
-        
-    def on_download_progress(self, file_id: int, progress: float):
-        """Handle the download progress signal.
-        
+
+        # Show menu and handle action
+        action = menu.exec_(self.queue_table.mapToGlobal(position))
+
+        if action == remove_action:
+            self.download_manager.remove_from_queue(file_id)
+            self.update_queue_table()
+
+    def on_download_started(self, file_id):
+        """Handle download started event.
+
         Args:
             file_id: ID of the file being downloaded
-            progress: Download progress (0-100)
         """
-        # Find the row for this file
+        self.update_queue_table()
+
+    def on_download_progress(self, file_id, progress):
+        """Handle download progress event.
+
+        Args:
+            file_id: ID of the file being downloaded
+            progress: Download progress (0.0 to 1.0)
+        """
+        # Find the row with the file ID
         for row in range(self.queue_table.rowCount()):
             if self.queue_table.item(row, 0).data(Qt.UserRole) == file_id:
                 # Update the progress bar
                 progress_bar = self.queue_table.cellWidget(row, 4)
-                progress_bar.setValue(int(progress))
+                if progress_bar:
+                    progress_bar.setValue(int(progress * 100))
                 break
-        
-    def on_download_completed(self, file_id: int):
-        """Handle the download completed signal.
-        
+
+    def on_download_completed(self, file_id):
+        """Handle download completed event.
+
         Args:
-            file_id: ID of the file that completed downloading
+            file_id: ID of the file that was downloaded
         """
-        # Find the row for this file
-        for row in range(self.queue_table.rowCount()):
-            if self.queue_table.item(row, 0).data(Qt.UserRole) == file_id:
-                # Update the status
-                self.queue_table.item(row, 3).setText("Completed")
-                # Set progress to 100%
-                progress_bar = self.queue_table.cellWidget(row, 4)
-                progress_bar.setValue(100)
-                break
-        
-        # Update the status label
-        self.update_status_label()
-        
-    def on_download_failed(self, file_id: int, error: str):
-        """Handle the download failed signal.
-        
+        self.update_queue_table()
+
+    def on_download_failed(self, file_id, error):
+        """Handle download failed event.
+
         Args:
             file_id: ID of the file that failed to download
             error: Error message
         """
-        # Find the row for this file
-        for row in range(self.queue_table.rowCount()):
-            if self.queue_table.item(row, 0).data(Qt.UserRole) == file_id:
-                # Update the status
-                self.queue_table.item(row, 3).setText("Failed")
-                # Set progress to 0%
-                progress_bar = self.queue_table.cellWidget(row, 4)
-                progress_bar.setValue(0)
-                break
-        
-        # Update the status label
-        self.update_status_label()
-        
-        # Show an error message
-        QMessageBox.warning(self, "Download Failed", f"Failed to download file {file_id}: {error}")
-        
-    @staticmethod
-    def format_size(size: int) -> str:
-        """Format a file size in bytes to a human-readable string.
-        
-        Args:
-            size: File size in bytes
-            
-        Returns:
-            Human-readable file size string
-        """
-        if size < 1024:
-            return f"{size} B"
-        elif size < 1024 * 1024:
-            return f"{size / 1024:.1f} KB"
-        elif size < 1024 * 1024 * 1024:
-            return f"{size / (1024 * 1024):.1f} MB"
-        else:
-            return f"{size / (1024 * 1024 * 1024):.1f} GB"
+        self.update_queue_table()
+
+        # Show error message
+        QMessageBox.warning(
+            self, "Download Failed",
+            f"Failed to download file {file_id}: {error}"
+        )

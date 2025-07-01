@@ -178,6 +178,26 @@ class LocalLibraryTab(QWidget):
         
         # Add filter group to main layout
         layout.addWidget(filter_group)
+
+        # Search group
+        search_group = QGroupBox("Search")
+        search_layout = QHBoxLayout(search_group)
+
+        self.search_input = QLineEdit()
+        self.search_input.setPlaceholderText("Search by filename or path...")
+        self.search_input.textChanged.connect(self.search_files)
+        search_layout.addWidget(self.search_input)
+
+        self.search_button = QPushButton("Search")
+        self.search_button.clicked.connect(lambda: self.search_files(self.search_input.text()))
+        search_layout.addWidget(self.search_button)
+
+        self.clear_search_button = QPushButton("Clear")
+        self.clear_search_button.clicked.connect(self.clear_search)
+        search_layout.addWidget(self.clear_search_button)
+
+        # Add search group to main layout
+        layout.addWidget(search_group)
         
         # Table for displaying files
         self.files_table = QTableWidget(0, 4)  # 0 rows, 4 columns
@@ -542,3 +562,66 @@ class LocalLibraryTab(QWidget):
             return f"{size / (1024 * 1024):.1f} MB"
         else:
             return f"{size / (1024 * 1024 * 1024):.1f} GB"
+
+    def search_files(self, search_text):
+        """Search for files by name or path.
+
+        Args:
+            search_text: Text to search for
+        """
+        # Get the current filter
+        filter_id = self.filter_group.checkedId()
+        file_type = None
+
+        if filter_id == 1:
+            file_type = "pdf"
+        elif filter_id == 2:
+            file_type = "epub"
+        elif filter_id == 3:
+            file_type = "txt"
+
+        # Get all files matching the filter
+        try:
+            if file_type:
+                files = self.local_file_model.get_files_by_type(file_type)
+            else:
+                files = self.local_file_model.get_files()
+
+            # Apply search filter
+            search_text = search_text.lower()
+            filtered_files = []
+
+            for file in files:
+                # Check if the search text is in the file path
+                if search_text in file["path"].lower():
+                    filtered_files.append(file)
+
+            # Clear the table
+            self.files_table.setRowCount(0)
+
+            # Add the filtered files to the table
+            for file in filtered_files:
+                row_position = self.files_table.rowCount()
+                self.files_table.insertRow(row_position)
+
+                self.files_table.setItem(row_position, 0, QTableWidgetItem(str(file["id"])))
+                self.files_table.setItem(row_position, 1, QTableWidgetItem(file["path"]))
+                self.files_table.setItem(row_position, 2, QTableWidgetItem(file["file_type"].upper()))
+
+                # Format the file size
+                size = file.get("size")
+                size_text = "Unknown" if size is None else self._format_size(size)
+                self.files_table.setItem(row_position, 3, QTableWidgetItem(size_text))
+
+            # Update status message
+            if hasattr(self, "status_bar"):
+                self.status_bar.showMessage(f"Found {len(filtered_files)} files matching '{search_text}'")
+            logger.info(f"Found {len(filtered_files)} files matching '{search_text}'")
+        except Exception as e:
+            logger.error(f"Error searching files: {e}")
+            QMessageBox.warning(self, "Error", f"Error searching files: {e}")
+
+    def clear_search(self):
+        """Clear the search and show all files."""
+        self.search_input.clear()
+        self.filter_files()
