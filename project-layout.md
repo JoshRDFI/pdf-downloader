@@ -40,7 +40,7 @@ This project is a PyQt-based desktop application for managing and downloading ca
 - **BeautifulSoup:** HTML parsing and scraping.
 - **(Optional) lxml:** Faster HTML parsing if needed.
 - **PyPDF2 or pdfminer:** For PDF validation and metadata extraction.
-- **(Optional) ebooklib, chardet:** For EPUB/TXT support and encoding detection.
+- **ebooklib, chardet:** For EPUB/TXT support and encoding detection.
 
 ## ui-rules
 
