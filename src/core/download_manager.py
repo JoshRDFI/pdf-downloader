@@ -42,11 +42,38 @@ class DownloadManager(QObject):
         self.download_queue = PriorityQueue()  # Priority queue for downloads
         self.active_downloads = {}  # Map of file_id to download info
         self.workers = []  # List of worker threads
-        self.max_workers = config.get("download", "concurrent_downloads", 3)
-        self.rate_limit = config.get("download", "rate_limit_kbps", 500)  # KB/s
         self.running = False
         self.lock = threading.Lock()
         self.queue_items = []  # List of queue items for UI display
+
+        # Load settings
+        self.load_settings()
+
+    def load_settings(self):
+        """Load settings from the configuration."""
+        self.max_workers = config.get("download", "concurrent_downloads", 3)
+        self.rate_limit = config.get("download", "rate_limit_kbps", 500)  # KB/s
+
+        # If rate limit is 0, disable rate limiting
+        if self.rate_limit == 0:
+            self.rate_limit = None
+
+    def reload_settings(self):
+        """Reload settings from the configuration.
+
+        This method should be called when settings are changed.
+        """
+        with self.lock:
+            old_max_workers = self.max_workers
+            self.load_settings()
+
+            # If the number of workers has decreased, we need to stop some workers
+            if self.max_workers < old_max_workers and self.running:
+                # Stop the manager and restart it
+                self.stop()
+                self.start()
+
+            logger.info(f"Reloaded download manager settings: max_workers={self.max_workers}, rate_limit={self.rate_limit}")
 
     def start(self):
         """Start the download manager.

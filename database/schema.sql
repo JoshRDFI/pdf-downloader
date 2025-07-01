@@ -71,6 +71,16 @@ CREATE TABLE IF NOT EXISTS downloads (
     FOREIGN KEY (local_file_id) REFERENCES local_files (id) ON DELETE SET NULL
 );
 
+-- Settings table for storing application settings
+CREATE TABLE IF NOT EXISTS settings (
+    key TEXT PRIMARY KEY,
+    value TEXT,
+    category TEXT NOT NULL,  -- 'network', 'download', 'notification', 'appearance', etc.
+    description TEXT,
+    created_at TEXT DEFAULT (datetime('now')),
+    updated_at TEXT DEFAULT (datetime('now'))
+);
+
 -- Triggers to update the updated_at timestamp
 CREATE TRIGGER IF NOT EXISTS sites_update_timestamp
 AFTER UPDATE ON sites
@@ -100,4 +110,9 @@ CREATE TRIGGER IF NOT EXISTS downloads_update_timestamp
 AFTER UPDATE ON downloads
 BEGIN
     UPDATE downloads SET updated_at = datetime('now') WHERE id = NEW.id;
+END;
+CREATE TRIGGER IF NOT EXISTS settings_update_timestamp
+AFTER UPDATE ON settings
+BEGIN
+    UPDATE settings SET updated_at = datetime('now') WHERE key = NEW.key;
 END;

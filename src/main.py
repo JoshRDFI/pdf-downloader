@@ -13,6 +13,9 @@ from PyQt5.QtWidgets import QApplication
 from src.gui.main_window import MainWindow
 from src.db.database import DatabaseManager
 from src.scrapers import register_builtin_scrapers, load_scrapers
+from src.plugins.scrapers import scraper_plugin_manager
+from src.plugins.file_types import file_type_plugin_manager
+from src.core.file_validator import FileValidator
 
 
 def setup_logging():
@@ -61,6 +64,25 @@ def initialize_scrapers():
     logging.info("Scrapers initialized")
 
 
+def initialize_plugins():
+    """Initialize the plugin system.
+    
+    This function discovers and loads plugins for scrapers and file types.
+    """
+    # Discover scraper plugins
+    scraper_plugin_manager.discover_plugins()
+    logging.info(f"Discovered {len(scraper_plugin_manager.get_all_plugins())} scraper plugins")
+    
+    # Discover file type plugins
+    file_type_plugin_manager.discover_plugins()
+    logging.info(f"Discovered {len(file_type_plugin_manager.get_all_plugins())} file type plugins")
+    
+    # Initialize the file validator to register built-in validators
+    FileValidator()
+    logging.info(f"Supported file types: {', '.join(file_type_plugin_manager.get_supported_types())}")
+    logging.info(f"Supported file extensions: {', '.join(file_type_plugin_manager.get_supported_extensions())}")
+
+
 def main():
     """Main entry point for the application.
     
@@ -75,6 +97,9 @@ def main():
     
     # Initialize the scraper registry
     initialize_scrapers()
+    
+    # Initialize the plugin system
+    initialize_plugins()
     
     # Create the application
     app = QApplication(sys.argv)

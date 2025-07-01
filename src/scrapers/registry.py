@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import Dict, Type, Optional
 
 from src.scrapers.base_scraper import BaseScraper
+from src.plugins.scrapers import scraper_plugin_manager
 
 
 logger = logging.getLogger(__name__)
@@ -50,6 +51,9 @@ class ScraperRegistry:
         
         self._scrapers[scraper_type] = scraper_class
         logger.info(f"Registered scraper: {scraper_type} -> {scraper_class.__name__}")
+        
+        # Also register with the plugin manager
+        scraper_plugin_manager.register_plugin(scraper_type, scraper_class)
     
     def get_scraper_class(self, scraper_type: str) -> Optional[Type[BaseScraper]]:
         """Get a scraper class by its type identifier.
@@ -60,7 +64,13 @@ class ScraperRegistry:
         Returns:
             Scraper class if found, None otherwise
         """
-        return self._scrapers.get(scraper_type)
+        # First check the registry
+        scraper_class = self._scrapers.get(scraper_type)
+        if scraper_class is not None:
+            return scraper_class
+        
+        # Then check the plugin manager
+        return scraper_plugin_manager.get_plugin(scraper_type)
     
     def create_scraper(self, scraper_type: str, base_url: str, **kwargs) -> Optional[BaseScraper]:
         """Create a scraper instance for the given type and URL.
@@ -73,6 +83,7 @@ class ScraperRegistry:
         Returns:
             Scraper instance if the type is registered, None otherwise
         """
+        # First try to create from the registry
         scraper_class = self.get_scraper_class(scraper_type)
         if scraper_class is None:
             logger.warning(f"No scraper registered for type: {scraper_type}")
@@ -91,7 +102,15 @@ class ScraperRegistry:
         Returns:
             Dictionary mapping scraper types to scraper classes
         """
-        return self._scrapers.copy()
+        # Combine scrapers from the registry and the plugin manager
+        scrapers = self._scrapers.copy()
+        
+        # Add scrapers from the plugin manager
+        for scraper_type, scraper_class in scraper_plugin_manager.get_all_plugins().items():
+            if scraper_type not in scrapers:
+                scrapers[scraper_type] = scraper_class
+        
+        return scrapers
 
 
 def load_scrapers() -> None:
@@ -127,6 +146,9 @@ def load_scrapers() -> None:
                     registry.register_scraper(scraper_type, attr)
         except Exception as e:
             logger.error(f"Error loading scraper module {module_name}: {e}")
+    
+    # Also load scrapers from the plugin directory
+    scraper_plugin_manager.discover_plugins()
 
 
 # Register the built-in scrapers

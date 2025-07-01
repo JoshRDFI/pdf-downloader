@@ -5,7 +5,9 @@ This module provides functionality for validating different types of files.
 
 import os
 import logging
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, List
+
+from src.plugins.file_types import file_type_plugin_manager, FileTypeValidator
 
 # Import file-specific validation libraries
 try:
@@ -31,74 +33,14 @@ except ImportError:
 logger = logging.getLogger(__name__)
 
 
-class FileValidator:
-    """Validator for checking file integrity and type.
+# Define built-in file type validators
+class PDFValidator(FileTypeValidator):
+    """Validator for PDF files."""
     
-    This class provides methods for validating different types of files,
-    such as PDFs, EPUBs, and text files.
-    """
+    FILE_TYPE = "pdf"
+    EXTENSIONS = [".pdf"]
     
-    def __init__(self):
-        """Initialize the file validator."""
-        pass
-    
-    def validate_file(self, file_path: str, file_type: Optional[str] = None) -> Dict[str, Any]:
-        """Validate a file based on its type.
-        
-        Args:
-            file_path: Path to the file to validate
-            file_type: Type of the file (optional, will be inferred from extension if not provided)
-            
-        Returns:
-            Dictionary containing validation results
-        """
-        result = {
-            "valid": False,
-            "file_path": file_path,
-            "file_type": file_type,
-            "error": None,
-            "metadata": {}
-        }
-        
-        try:
-            # Check if the file exists
-            if not os.path.isfile(file_path):
-                result["error"] = "File does not exist"
-                return result
-            
-            # Infer the file type from the extension if not provided
-            if file_type is None:
-                _, ext = os.path.splitext(file_path)
-                ext = ext.lower()
-                
-                if ext == ".pdf":
-                    file_type = "pdf"
-                elif ext == ".epub":
-                    file_type = "epub"
-                elif ext in [".txt", ".text"]:
-                    file_type = "txt"
-                else:
-                    result["error"] = f"Unsupported file extension: {ext}"
-                    return result
-            
-            result["file_type"] = file_type
-            
-            # Validate the file based on its type
-            if file_type == "pdf":
-                return self._validate_pdf(file_path)
-            elif file_type == "epub":
-                return self._validate_epub(file_path)
-            elif file_type == "txt":
-                return self._validate_text(file_path)
-            else:
-                result["error"] = f"Unsupported file type: {file_type}"
-                return result
-        except Exception as e:
-            logger.error(f"Error validating file {file_path}: {e}")
-            result["error"] = str(e)
-            return result
-    
-    def _validate_pdf(self, file_path: str) -> Dict[str, Any]:
+    def validate(self, file_path: str) -> Dict[str, Any]:
         """Validate a PDF file.
         
         Args:
@@ -110,7 +52,7 @@ class FileValidator:
         result = {
             "valid": False,
             "file_path": file_path,
-            "file_type": "pdf",
+            "file_type": self.FILE_TYPE,
             "error": None,
             "metadata": {}
         }
@@ -149,8 +91,15 @@ class FileValidator:
             result["error"] = str(e)
         
         return result
+
+
+class EPUBValidator(FileTypeValidator):
+    """Validator for EPUB files."""
     
-    def _validate_epub(self, file_path: str) -> Dict[str, Any]:
+    FILE_TYPE = "epub"
+    EXTENSIONS = [".epub"]
+    
+    def validate(self, file_path: str) -> Dict[str, Any]:
         """Validate an EPUB file.
         
         Args:
@@ -162,7 +111,7 @@ class FileValidator:
         result = {
             "valid": False,
             "file_path": file_path,
-            "file_type": "epub",
+            "file_type": self.FILE_TYPE,
             "error": None,
             "metadata": {}
         }
@@ -195,8 +144,15 @@ class FileValidator:
             result["error"] = str(e)
         
         return result
+
+
+class TextValidator(FileTypeValidator):
+    """Validator for text files."""
     
-    def _validate_text(self, file_path: str) -> Dict[str, Any]:
+    FILE_TYPE = "txt"
+    EXTENSIONS = [".txt", ".text"]
+    
+    def validate(self, file_path: str) -> Dict[str, Any]:
         """Validate a text file.
         
         Args:
@@ -208,7 +164,7 @@ class FileValidator:
         result = {
             "valid": False,
             "file_path": file_path,
-            "file_type": "txt",
+            "file_type": self.FILE_TYPE,
             "error": None,
             "metadata": {}
         }
@@ -242,3 +198,94 @@ class FileValidator:
             result["error"] = str(e)
         
         return result
+
+
+# Register built-in validators
+file_type_plugin_manager.register_plugin("pdf", PDFValidator)
+file_type_plugin_manager.register_plugin("epub", EPUBValidator)
+file_type_plugin_manager.register_plugin("txt", TextValidator)
+
+
+class FileValidator:
+    """Validator for checking file integrity and type.
+    
+    This class provides methods for validating different types of files,
+    such as PDFs, EPUBs, and text files.
+    """
+    
+    def __init__(self):
+        """Initialize the file validator."""
+        # Discover file type plugins
+        file_type_plugin_manager.discover_plugins()
+    
+    def validate_file(self, file_path: str, file_type: Optional[str] = None) -> Dict[str, Any]:
+        """Validate a file based on its type.
+        
+        Args:
+            file_path: Path to the file to validate
+            file_type: Type of the file (optional, will be inferred from extension if not provided)
+            
+        Returns:
+            Dictionary containing validation results
+        """
+        result = {
+            "valid": False,
+            "file_path": file_path,
+            "file_type": file_type,
+            "error": None,
+            "metadata": {}
+        }
+        
+        try:
+            # Check if the file exists
+            if not os.path.isfile(file_path):
+                result["error"] = "File does not exist"
+                return result
+            
+            # Get a validator for the file
+            validator = None
+            
+            if file_type is not None:
+                # Use the specified file type
+                validator = file_type_plugin_manager.get_validator_for_type(file_type)
+            else:
+                # Infer the file type from the extension
+                validator = file_type_plugin_manager.get_validator_for_file(file_path)
+                
+                if validator is None:
+                    # Try to infer the file type from the extension
+                    _, ext = os.path.splitext(file_path)
+                    ext = ext.lower()
+                    
+                    result["error"] = f"Unsupported file extension: {ext}"
+                    return result
+            
+            if validator is None:
+                result["error"] = f"No validator found for file type: {file_type}"
+                return result
+            
+            # Update the file type in the result
+            result["file_type"] = validator.FILE_TYPE
+            
+            # Validate the file
+            return validator.validate(file_path)
+        except Exception as e:
+            logger.error(f"Error validating file {file_path}: {e}")
+            result["error"] = str(e)
+            return result
+    
+    def get_supported_extensions(self) -> List[str]:
+        """Get a list of supported file extensions.
+        
+        Returns:
+            List of supported file extensions
+        """
+        return file_type_plugin_manager.get_supported_extensions()
+    
+    def get_supported_types(self) -> List[str]:
+        """Get a list of supported file types.
+        
+        Returns:
+            List of supported file types
+        """
+        return file_type_plugin_manager.get_supported_types()

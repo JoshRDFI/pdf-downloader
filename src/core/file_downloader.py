@@ -12,6 +12,7 @@ from datetime import datetime
 from urllib.parse import urlparse
 
 from config import config
+from src.utils import network_utils
 
 
 logger = logging.getLogger(__name__)
@@ -28,10 +29,7 @@ class FileDownloader:
         """Initialize the file downloader."""
         self.download_dir = config.get("download", "directory", "downloads")
         self.retry_count = config.get("download", "retry_count", 3)
-        self.timeout = config.get("download", "timeout", 30)
-        self.user_agent = config.get("network", "user_agent", 
-                                    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36")
-        self.proxy = config.get("network", "proxy", None)
+        self.retry_delay = config.get("download", "retry_delay", 5)
         
         # Create the download directory if it doesn't exist
         os.makedirs(self.download_dir, exist_ok=True)
@@ -54,6 +52,13 @@ class FileDownloader:
         Returns:
             Dictionary containing download results
         """
+        # Use the global rate limit if none is specified
+        if rate_limit is None:
+            rate_limit = config.get("download", "rate_limit_kbps", 500)
+            # If rate limit is 0, disable rate limiting
+            if rate_limit == 0:
+                rate_limit = None
+        
         result = {
             "success": False,
             "url": url,
@@ -81,25 +86,11 @@ class FileDownloader:
             file_path = os.path.join(save_dir, file_name)
             result["file_path"] = file_path
             
-            # Set up the request headers
-            headers = {
-                "User-Agent": self.user_agent
-            }
-            
-            # Set up the proxies
-            proxies = None
-            if self.proxy:
-                proxies = {
-                    "http": self.proxy,
-                    "https": self.proxy
-                }
-            
             # Download the file with retries
             for attempt in range(self.retry_count + 1):
                 try:
-                    # Start the download
-                    with requests.get(url, headers=headers, proxies=proxies, 
-                                     stream=True, timeout=self.timeout) as response:
+                    # Start the download using network_utils
+                    with network_utils.get(url, stream=True) as response:
                         # Check if the request was successful
                         response.raise_for_status()
                         
@@ -147,6 +138,8 @@ class FileDownloader:
                 except requests.exceptions.RequestException as e:
                     if attempt < self.retry_count:
                         logger.warning(f"Download attempt {attempt + 1} failed for {url}: {e}")
+                        # Wait before retrying
+                        time.sleep(self.retry_delay)
                     else:
                         raise
         except Exception as e:

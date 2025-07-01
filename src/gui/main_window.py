@@ -4,7 +4,7 @@ This module contains the MainWindow class for the application's main window.
 """
 
 import logging
-from PyQt5.QtWidgets import QMainWindow, QTabWidget, QVBoxLayout, QWidget, QStatusBar, QSystemTrayIcon, QMenu, QAction
+from PyQt5.QtWidgets import QMainWindow, QTabWidget, QVBoxLayout, QWidget, QStatusBar, QSystemTrayIcon, QMenu, QAction, QMenuBar
 from PyQt5.QtCore import Qt
 from PyQt5.QtGui import QIcon
 
@@ -14,6 +14,7 @@ from src.gui.local_library_tab import LocalLibraryTab
 from src.gui.comparison_tab import ComparisonTab
 from src.gui.download_queue_tab import DownloadQueueTab
 from src.gui.download_history_tab import DownloadHistoryTab
+from src.gui.settings_dialog import SettingsDialog
 
 
 logger = logging.getLogger(__name__)
@@ -37,6 +38,9 @@ class MainWindow(QMainWindow):
         # Set window properties
         self.setWindowTitle("PDF Downloader")
         self.setMinimumSize(800, 600)
+        
+        # Create the menu bar
+        self.create_menu_bar()
         
         # Create the central widget
         central_widget = QWidget()
@@ -75,6 +79,57 @@ class MainWindow(QMainWindow):
         
         # Set up system tray icon
         self.setup_tray_icon()
+    
+    def create_menu_bar(self):
+        """Create the menu bar."""
+        menu_bar = QMenuBar()
+        self.setMenuBar(menu_bar)
+        
+        # File menu
+        file_menu = menu_bar.addMenu("&File")
+        
+        # Exit action
+        exit_action = QAction("E&xit", self)
+        exit_action.setShortcut("Ctrl+Q")
+        exit_action.setStatusTip("Exit the application")
+        exit_action.triggered.connect(self.close)
+        file_menu.addAction(exit_action)
+        
+        # Tools menu
+        tools_menu = menu_bar.addMenu("&Tools")
+        
+        # Settings action
+        settings_action = QAction("&Settings", self)
+        settings_action.setShortcut("Ctrl+,")
+        settings_action.setStatusTip("Configure application settings")
+        settings_action.triggered.connect(self.show_settings_dialog)
+        tools_menu.addAction(settings_action)
+        
+        # Help menu
+        help_menu = menu_bar.addMenu("&Help")
+        
+        # About action
+        about_action = QAction("&About", self)
+        about_action.setStatusTip("Show information about the application")
+        about_action.triggered.connect(self.show_about_dialog)
+        help_menu.addAction(about_action)
+    
+    def show_settings_dialog(self):
+        """Show the settings dialog."""
+        dialog = SettingsDialog(self)
+        dialog.exec_()
+    
+    def show_about_dialog(self):
+        """Show the about dialog."""
+        from PyQt5.QtWidgets import QMessageBox
+        QMessageBox.about(
+            self,
+            "About PDF Downloader",
+            "<h3>PDF Downloader</h3>"
+            "<p>Version 1.0.0</p>"
+            "<p>A desktop application for managing and downloading categorized files from websites.</p>"
+            "<p>&copy; 2023 Your Name</p>"
+        )
     
     def closeEvent(self, event):
         """Handle the window close event.
@@ -122,6 +177,12 @@ class MainWindow(QMainWindow):
         hide_action = QAction("Hide", self)
         hide_action.triggered.connect(self.hide)
         tray_menu.addAction(hide_action)
+        
+        tray_menu.addSeparator()
+        
+        settings_action = QAction("Settings", self)
+        settings_action.triggered.connect(self.show_settings_dialog)
+        tray_menu.addAction(settings_action)
         
         tray_menu.addSeparator()
         

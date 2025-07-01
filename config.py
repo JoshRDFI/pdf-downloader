@@ -6,7 +6,7 @@ This module contains configuration settings for the application.
 import os
 import json
 import logging
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, Union
 
 
 logger = logging.getLogger(__name__)
@@ -16,6 +16,7 @@ class Config:
     """Configuration manager for the application.
     
     This class handles loading, saving, and accessing configuration settings.
+    It can use either a JSON file or the database for storage.
     """
     
     # Default configuration settings
@@ -23,37 +24,47 @@ class Config:
         "download": {
             "directory": "downloads",
             "concurrent_downloads": 3,
+            "rate_limit_kbps": 500,
             "retry_count": 3,
+            "retry_delay": 5,
             "timeout": 30
         },
         "network": {
             "user_agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
-            "proxy": None,
-            "delay": 1.0
+            "proxy_enabled": False,
+            "proxy_url": "",
+            "proxy_username": "",
+            "proxy_password": "",
+            "timeout": 30
         },
-        "ui": {
+        "file_types": {
+            "pdf_enabled": True,
+            "epub_enabled": True,
+            "txt_enabled": True
+        },
+        "notification": {
+            "enabled": True,
+            "download_completed": True,
+            "download_failed": True,
+            "scan_completed": True
+        },
+        "appearance": {
             "theme": "system",
-            "font_size": 10,
-            "show_status_bar": True
-        },
-        "logging": {
-            "level": "INFO",
-            "max_files": 10,
-            "max_size_mb": 10
+            "font_size": 12
         },
         "local_library": {
             "directories": [],
             "scan_on_startup": False,
-            "file_types": ["pdf", "epub", "txt"],
             "validate_files": True
         }
     }
     
-    def __init__(self, config_file: Optional[str] = None):
+    def __init__(self, config_file: Optional[str] = None, use_db: bool = True):
         """Initialize the configuration manager.
         
         Args:
             config_file: Path to the configuration file (optional)
+            use_db: Whether to use the database for settings (default: True)
         """
         # Determine the configuration file path
         if config_file is None:
@@ -62,11 +73,27 @@ class Config:
         else:
             self.config_file = config_file
         
+        self.use_db = use_db
+        self.settings_model = None
+        
         # Load the configuration
         self.config = self.load_config()
     
+    def _get_settings_model(self):
+        """Get the settings model instance.
+        
+        Returns:
+            SettingsModel instance
+        """
+        if self.settings_model is None:
+            # Import here to avoid circular imports
+            from src.db.settings_model import SettingsModel
+            self.settings_model = SettingsModel()
+        
+        return self.settings_model
+    
     def load_config(self) -> Dict[str, Any]:
-        """Load the configuration from the file.
+        """Load the configuration.
         
         Returns:
             Dictionary containing the configuration settings
@@ -74,26 +101,49 @@ class Config:
         # Start with the default configuration
         config = self.DEFAULT_CONFIG.copy()
         
-        # Try to load the configuration from the file
-        try:
-            if os.path.exists(self.config_file):
-                with open(self.config_file, "r") as f:
-                    file_config = json.load(f)
+        if self.use_db:
+            try:
+                # Load settings from the database
+                settings_model = self._get_settings_model()
+                db_settings = settings_model.get_all()
                 
-                # Update the default configuration with the file configuration
-                self._update_dict(config, file_config)
+                # Update the configuration with database settings
+                for key, value in db_settings.items():
+                    if "." in key:
+                        # Split the key into category and name
+                        category, name = key.split(".", 1)
+                        
+                        # Ensure the category exists in the config
+                        if category not in config:
+                            config[category] = {}
+                        
+                        # Update the config
+                        config[category][name] = value
                 
-                logger.info(f"Loaded configuration from {self.config_file}")
-            else:
-                logger.info(f"Configuration file {self.config_file} not found, using defaults")
-                self.save_config(config)  # Save the default configuration
-        except Exception as e:
-            logger.error(f"Error loading configuration: {e}")
+                logger.info("Loaded configuration from database")
+            except Exception as e:
+                logger.error(f"Error loading configuration from database: {e}")
+        else:
+            # Try to load the configuration from the file
+            try:
+                if os.path.exists(self.config_file):
+                    with open(self.config_file, "r") as f:
+                        file_config = json.load(f)
+                    
+                    # Update the default configuration with the file configuration
+                    self._update_dict(config, file_config)
+                    
+                    logger.info(f"Loaded configuration from {self.config_file}")
+                else:
+                    logger.info(f"Configuration file {self.config_file} not found, using defaults")
+                    self.save_config(config)  # Save the default configuration
+            except Exception as e:
+                logger.error(f"Error loading configuration from file: {e}")
         
         return config
     
     def save_config(self, config: Optional[Dict[str, Any]] = None) -> bool:
-        """Save the configuration to the file.
+        """Save the configuration.
         
         Args:
             config: Dictionary containing the configuration settings (optional)
@@ -104,121 +154,106 @@ class Config:
         if config is None:
             config = self.config
         
-        try:
-            with open(self.config_file, "w") as f:
-                json.dump(config, f, indent=4)
-            
-            logger.info(f"Saved configuration to {self.config_file}")
-            return True
-        except Exception as e:
-            logger.error(f"Error saving configuration: {e}")
-            return False
+        if self.use_db:
+            try:
+                # Save settings to the database
+                settings_model = self._get_settings_model()
+                
+                # Flatten the config dictionary
+                for category, settings in config.items():
+                    for name, value in settings.items():
+                        key = f"{category}.{name}"
+                        settings_model.set(key, value)
+                
+                logger.info("Saved configuration to database")
+                return True
+            except Exception as e:
+                logger.error(f"Error saving configuration to database: {e}")
+                return False
+        else:
+            # Save the configuration to the file
+            try:
+                # Create the directory if it doesn't exist
+                os.makedirs(os.path.dirname(self.config_file), exist_ok=True)
+                
+                # Save the configuration to the file
+                with open(self.config_file, "w") as f:
+                    json.dump(config, f, indent=4)
+                
+                logger.info(f"Saved configuration to {self.config_file}")
+                return True
+            except Exception as e:
+                logger.error(f"Error saving configuration to file: {e}")
+                return False
     
-    def get(self, section: str, key: str, default: Any = None) -> Any:
-        """Get a configuration value.
+    def get(self, category: str, name: str, default: Any = None) -> Any:
+        """Get a configuration setting.
         
         Args:
-            section: Section of the configuration
-            key: Key within the section
-            default: Default value to return if the key is not found
+            category: Category of the setting
+            name: Name of the setting
+            default: Default value to return if the setting is not found
             
         Returns:
-            The configuration value, or the default value if not found
+            Value of the setting, or default if not found
         """
+        if self.use_db:
+            try:
+                # Get the setting from the database
+                settings_model = self._get_settings_model()
+                key = f"{category}.{name}"
+                value = settings_model.get(key)
+                
+                if value is not None:
+                    return value
+            except Exception as e:
+                logger.error(f"Error getting setting {category}.{name} from database: {e}")
+        
+        # Get the setting from the config dictionary
         try:
-            return self.config[section][key]
-        except KeyError:
+            return self.config.get(category, {}).get(name, default)
+        except Exception as e:
+            logger.error(f"Error getting setting {category}.{name} from config: {e}")
             return default
     
-    def set(self, section: str, key: str, value: Any) -> bool:
-        """Set a configuration value.
+    def set(self, category: str, name: str, value: Any) -> bool:
+        """Set a configuration setting.
         
         Args:
-            section: Section of the configuration
-            key: Key within the section
-            value: Value to set
+            category: Category of the setting
+            name: Name of the setting
+            value: Value of the setting
             
         Returns:
-            True if the value was set successfully, False otherwise
+            True if the setting was set successfully, False otherwise
         """
         try:
-            # Create the section if it doesn't exist
-            if section not in self.config:
-                self.config[section] = {}
+            # Update the config dictionary
+            if category not in self.config:
+                self.config[category] = {}
             
-            # Set the value
-            self.config[section][key] = value
+            self.config[category][name] = value
             
-            # Save the configuration
-            return self.save_config()
+            if self.use_db:
+                # Update the setting in the database
+                settings_model = self._get_settings_model()
+                key = f"{category}.{name}"
+                settings_model.set(key, value)
+            else:
+                # Save the updated config to the file
+                self.save_config()
+            
+            return True
         except Exception as e:
-            logger.error(f"Error setting configuration value: {e}")
+            logger.error(f"Error setting {category}.{name} to {value}: {e}")
             return False
-    
-    def add_local_directory(self, directory: str) -> bool:
-        """Add a local directory to the configuration.
-        
-        Args:
-            directory: Path to the directory to add
-            
-        Returns:
-            True if the directory was added successfully, False otherwise
-        """
-        try:
-            # Get the current directories
-            directories = self.get("local_library", "directories", [])
-            
-            # Add the directory if it's not already in the list
-            if directory not in directories:
-                directories.append(directory)
-                
-                # Update the configuration
-                return self.set("local_library", "directories", directories)
-            
-            return True  # Directory already exists
-        except Exception as e:
-            logger.error(f"Error adding local directory: {e}")
-            return False
-    
-    def remove_local_directory(self, directory: str) -> bool:
-        """Remove a local directory from the configuration.
-        
-        Args:
-            directory: Path to the directory to remove
-            
-        Returns:
-            True if the directory was removed successfully, False otherwise
-        """
-        try:
-            # Get the current directories
-            directories = self.get("local_library", "directories", [])
-            
-            # Remove the directory if it's in the list
-            if directory in directories:
-                directories.remove(directory)
-                
-                # Update the configuration
-                return self.set("local_library", "directories", directories)
-            
-            return True  # Directory already removed
-        except Exception as e:
-            logger.error(f"Error removing local directory: {e}")
-            return False
-    
-    def get_local_directories(self) -> list:
-        """Get the list of local directories.
-        
-        Returns:
-            List of local directory paths
-        """
-        return self.get("local_library", "directories", [])
     
     def _update_dict(self, target: Dict[str, Any], source: Dict[str, Any]) -> None:
-        """Recursively update a dictionary.
+        """Update a dictionary recursively.
         
         Args:
-            target: Dictionary to update
-            source: Dictionary with values to update from
+            target: Target dictionary to update
+            source: Source dictionary with new values
         """
         for key, value in source.items():
             if key in target and isinstance(target[key], dict) and isinstance(value, dict):
@@ -227,5 +262,5 @@ class Config:
                 target[key] = value
 
 
-# Create a global configuration instance
+# Create a global config instance
 config = Config()
