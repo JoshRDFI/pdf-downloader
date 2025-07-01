@@ -62,9 +62,10 @@ class ComparisonTab(QWidget):
         super().__init__(parent)
         self.comparison_service = FileComparisonService()
         self.remote_file_model = RemoteFileModel()
+        self.download_manager = DownloadManager()
         self.comparison_thread = None
         self.comparison_results = None
-        
+
         self.init_ui()
     
     def init_ui(self):
@@ -399,8 +400,13 @@ class ComparisonTab(QWidget):
         if action == add_to_queue_action:
             # Get file ID
             file_id = self.new_files_table.item(row, 0).data(Qt.UserRole)
-            
-            # TODO: Add file to download queue
+            # Add file to download queue
+            success = self.download_manager.queue_download(file_id)
+
+            if success:
+                QMessageBox.information(self, "Add to Queue", f"File {file_id} added to download queue")
+            else:
+                QMessageBox.warning(self, "Add to Queue", f"Failed to add file {file_id} to download queue")
             QMessageBox.information(self, "Add to Queue", f"File {file_id} added to download queue")
     
     def show_updated_files_context_menu(self, position):
@@ -426,8 +432,11 @@ class ComparisonTab(QWidget):
             # Get file IDs
             file_ids = self.updated_files_table.item(row, 0).data(Qt.UserRole)
             
-            # TODO: Add file to download queue
-            QMessageBox.information(self, "Add to Queue", 
+            # Add file to download queue
+            success = self.download_manager.queue_download(file_ids['remote_id'])
+
+            if success:
+                QMessageBox.information(self, "Add to Queue", 
                                    f"File {file_ids['remote_id']} added to download queue")
     
     def show_corrupted_files_context_menu(self, position):
@@ -453,6 +462,12 @@ class ComparisonTab(QWidget):
             # Get file IDs
             file_ids = self.corrupted_files_table.item(row, 0).data(Qt.UserRole)
             
-            # TODO: Add file to download queue
-            QMessageBox.information(self, "Add to Queue", 
+            # Add file to download queue
+            success = self.download_manager.queue_download(file_ids['remote_id'])
+
+            if success:
+                QMessageBox.information(self, "Add to Queue",
                                    f"File {file_ids['remote_id']} added to download queue")
+            else:
+                QMessageBox.warning(self, "Add to Queue",
+                                f"Failed to add file {file_ids['remote_id']} to download queue")

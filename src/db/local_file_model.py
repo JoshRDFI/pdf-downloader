@@ -323,3 +323,29 @@ class LocalFileModel:
         files = [dict(row) for row in cursor.fetchall()]
 
         return files
+
+    def update_remote_file_id(self, file_id: int, remote_file_id: int) -> bool:
+        """Update the remote file ID for an existing local file.
+
+        This method is used to link a local file to a remote file after comparison.
+
+        Args:
+            file_id: ID of the local file to update
+            remote_file_id: ID of the remote file to link to
+
+        Returns:
+            True if the file was updated, False if the file was not found
+        """
+        conn = self.db_manager.connect()
+        cursor = conn.cursor()
+
+        now = datetime.now().isoformat()
+
+        cursor.execute("""
+            UPDATE local_files
+            SET remote_file_id = ?, updated_at = ?
+            WHERE id = ?
+        """, (remote_file_id, now, file_id))
+
+        conn.commit()
+        return cursor.rowcount > 0

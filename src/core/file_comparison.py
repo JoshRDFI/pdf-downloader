@@ -186,14 +186,11 @@ class FileComparisonService:
                 return False
             
             # Update the local file with the remote file ID
-            success = self.local_file_model.update_file(
+            success = self.local_file_model.update_remote_file_id(
                 file_id=local_file_id,
-                path=local_file["path"],
-                size=local_file["size"],
-                file_type=local_file["file_type"],
                 remote_file_id=remote_file_id
             )
-            
+
             if success:
                 logger.info(f"Linked local file {local_file_id} to remote file {remote_file_id}")
             else:

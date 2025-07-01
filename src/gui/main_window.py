@@ -11,6 +11,7 @@ from src.gui.site_management import SiteManagementTab
 from src.gui.library_tab import LibraryTab
 from src.gui.local_library_tab import LocalLibraryTab
 from src.gui.comparison_tab import ComparisonTab
+from src.gui.download_queue_tab import DownloadQueueTab
 
 
 logger = logging.getLogger(__name__)
@@ -58,6 +59,9 @@ class MainWindow(QMainWindow):
 
         self.comparison_tab = ComparisonTab()
         self.tab_widget.addTab(self.comparison_tab, "File Comparison")
+
+        self.download_queue_tab = DownloadQueueTab()
+        self.tab_widget.addTab(self.download_queue_tab, "Download Queue")
         
         # Create the status bar
         self.status_bar = QStatusBar()
@@ -73,6 +77,9 @@ class MainWindow(QMainWindow):
         # Clean up resources
         if hasattr(self, "library_tab") and hasattr(self.library_tab, "download_manager"):
             self.library_tab.download_manager.stop()
-        
+
+        if hasattr(self, "download_queue_tab") and hasattr(self.download_queue_tab, "download_manager"):
+            self.download_queue_tab.download_manager.stop()
+
         logger.info("Main window closed")
         event.accept()

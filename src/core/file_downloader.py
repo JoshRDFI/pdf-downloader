@@ -6,6 +6,7 @@ This module provides functionality for downloading files from remote sites.
 import os
 import logging
 import requests
+import time
 from typing import Dict, Any, Optional, Callable
 from datetime import datetime
 from urllib.parse import urlparse
@@ -20,7 +21,7 @@ class FileDownloader:
     """Downloader for retrieving files from remote sites.
     
     This class handles the downloading of files, including error handling,
-    retries, and progress tracking.
+    retries, progress tracking, and rate limiting.
     """
     
     def __init__(self):
@@ -36,15 +37,19 @@ class FileDownloader:
         os.makedirs(self.download_dir, exist_ok=True)
     
     def download_file(self, url: str, file_name: Optional[str] = None, 
-                     category: Optional[str] = None,
-                     progress_callback: Optional[Callable[[float], None]] = None) -> Dict[str, Any]:
+                     file_type: Optional[str] = None,
+                     category_id: Optional[int] = None,
+                     progress_callback: Optional[Callable[[float], None]] = None,
+                     rate_limit: Optional[int] = None) -> Dict[str, Any]:
         """Download a file from a URL.
         
         Args:
             url: URL of the file to download
             file_name: Name to save the file as (optional, defaults to URL filename)
-            category: Category to save the file in (optional)
+            file_type: Type of the file (e.g., 'pdf', 'epub')
+            category_id: ID of the category to save the file in (optional)
             progress_callback: Callback function for progress updates (optional)
+            rate_limit: Rate limit in KB/s (optional)
             
         Returns:
             Dictionary containing download results
@@ -62,12 +67,14 @@ class FileDownloader:
             if file_name is None:
                 file_name = os.path.basename(urlparse(url).path)
                 if not file_name:
-                    file_name = f"download_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf"
+                    file_name = f"download_{datetime.now().strftime('%Y%m%d_%H%M%S')}.{file_type or 'pdf'}"
             
             # Determine the save directory
             save_dir = self.download_dir
-            if category:
-                save_dir = os.path.join(save_dir, category)
+            if category_id:
+                # Use category_id as a subdirectory
+                category_dir = f"category_{category_id}"
+                save_dir = os.path.join(save_dir, category_dir)
                 os.makedirs(save_dir, exist_ok=True)
             
             # Determine the file path
@@ -100,17 +107,37 @@ class FileDownloader:
                         file_size = int(response.headers.get("Content-Length", 0))
                         result["file_size"] = file_size
                         
-                        # Download the file in chunks
+                        # Download the file in chunks with rate limiting
                         downloaded = 0
+                        start_time = time.time()
+                        chunk_size = 8192  # 8 KB chunks
+                        
                         with open(file_path, "wb") as f:
-                            for chunk in response.iter_content(chunk_size=8192):
+                            for chunk in response.iter_content(chunk_size=chunk_size):
                                 if chunk:
+                                    # Apply rate limiting if specified
+                                    if rate_limit:
+                                        # Calculate the expected time for this chunk at the rate limit
+                                        chunk_size_kb = len(chunk) / 1024
+                                        expected_time = chunk_size_kb / rate_limit
+                                        
+                                        # Calculate the elapsed time
+                                        elapsed = time.time() - start_time
+                                        
+                                        # Sleep if we're going too fast
+                                        if elapsed < expected_time:
+                                            time.sleep(expected_time - elapsed)
+                                        
+                                        # Reset the start time
+                                        start_time = time.time()
+                                    
+                                    # Write the chunk
                                     f.write(chunk)
                                     downloaded += len(chunk)
                                     
                                     # Update progress
                                     if progress_callback and file_size > 0:
-                                        progress = downloaded / file_size
+                                        progress = (downloaded / file_size) * 100
                                         progress_callback(progress)
                     
                     # Download successful
