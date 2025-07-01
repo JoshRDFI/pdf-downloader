@@ -1,1 +1,13 @@
-requests==2.32.1
+# Core dependencies
+PyQt5>=5.15.0
+requests>=2.25.0
+beautifulsoup4>=4.9.0
+
+# File handling
+PyPDF2>=2.0.0
+ebooklib>=0.17.0
+chardet>=4.0.0
+
+# Utilities
+tqdm>=4.50.0
+pytz>=2021.1
